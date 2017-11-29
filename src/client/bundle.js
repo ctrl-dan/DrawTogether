@@ -704,11 +704,13 @@ function serverCommandHandler(event) {
     } else if (commandID === 4) {
         // Line instruction
         handleLineInstruction(data);
+        updatePlayerCanvas();
     } else if (commandID === 5) {
         // Palette update
         palette = communicator.getPalette(data);
         updatePalette();
     } else if (commandID === 6) {
+        // Lobby full
         alert("Lobby Full");
         connectingToLobby = false;
     } else if (commandID === 255) {
@@ -734,6 +736,7 @@ function handlePlayerUpdate(updateData) {
     var info = communicator.getPlayerUpdateInfo(updateData);
 
     playerData[info.playerID] = info;
+    updatePlayerCanvas();
 }
 
 function joinLobby(width, height, backgroundColor) {
@@ -1123,7 +1126,7 @@ if (!amspectator) {
         justPickedPalette = false;
         colorUpdate(true);
     });
-    alphaSlider.addEventListener("mousedown", function () {
+    alphaSlider.addEventListener("touchend", function () {
         justPickedPalette = false;
         colorUpdate(true);
     });
@@ -1248,6 +1251,7 @@ function handleLineInstruction(instruction) {
 
         currentLines[lineID].combine();
     }
+    updatePlayerCanvas();
 }
 
 function processRedrawingInstructions(instructions) {
@@ -1267,7 +1271,7 @@ function processRedrawingInstructions(instructions) {
 function addLine(id, startPoint, type, size, color) {
     if (!amspectator) {
         var newLine = new Line(id, [startPoint], type, size, color);
-        newLine.createCanavs();
+        newLine.createCanvas();
 
         currentLines[id] = newLine;
     }
@@ -1282,7 +1286,7 @@ function Line(id, points, type, size, color) {
     this.alpha = getAlphaFromRGBA(color);
     this.locallyBlocked = false;
 
-    this.createCanavs = function () {
+    this.createCanvas = function () {
         this.canvas = document.createElement("canvas");
         this.canvas.setAttribute("width", canvas.width);
         this.canvas.setAttribute("height", canvas.height);
@@ -1310,17 +1314,17 @@ function Line(id, points, type, size, color) {
 
     this.drawLastSegment = function () {
         if (this.type === 4) {
-            this.ctx.beginPath();
             var width = this.size;
-            xDist = this.points[this.points.length - 2].x - this.points[this.points.length - 1].x;
-            yDist = this.points[this.points.length - 2].y - this.points[this.points.length - 1].y;
-            console.log(Math.hypot(xDist, yDist) * 20);
-            for (var n = 0; n < Math.hypot(xDist, yDist) * 20; n++) {
-                this.ctx.moveTo(this.points[this.points.length - 1].x + xDist / n - width, this.points[this.points.length - 1].y + yDist / n - width);
-                this.ctx.lineTo(this.points[this.points.length - 1].x + xDist / n + width, this.points[this.points.length - 1].y + yDist / n + width);
-                this.setLineStyle(this.ctx, this.RGB);
-                this.ctx.stroke();
-            }
+            this.setLineStyle(this.ctx, this.RGB);
+            var p1 = this.points[this.points.length - 1];
+            var p2 = this.points[this.points.length - 2];
+            this.ctx.beginPath();
+            this.ctx.moveTo(p1.x, p1.y - width / 2);
+            this.ctx.lineTo(p1.x, p1.y + width / 2);
+            this.ctx.lineTo(p2.x, p2.y + width / 2);
+            this.ctx.lineTo(p2.x, p2.y - width / 2);
+            this.ctx.closePath();
+            this.ctx.fill();
         } else {
             this.ctx.beginPath();
             this.ctx.moveTo(this.points[this.points.length - 2].x, this.points[this.points.length - 2].y);
@@ -1352,7 +1356,6 @@ function Line(id, points, type, size, color) {
         } else if (this.type === 4) {
             // pen
             context.strokeStyle = color;
-            context.lineWidth = 2;
         }
     };
 
@@ -1368,7 +1371,7 @@ function Line(id, points, type, size, color) {
 
     this.drawFinalLine = function (context) {
         var calcedPoints = [];
-        if (this.type === 1) {
+        if (this.type === 1 || this.type === 4) {
             // Special treatment, as rubber shouldn't receive the hermite line modelling
             for (var i = 0; i < this.points.length; i++) {
                 calcedPoints.push([this.points[i].x, this.points[i].y]);
@@ -1437,21 +1440,33 @@ function Line(id, points, type, size, color) {
                 context.lineWidth = Math.max(1, Math.pow(0.935, currentDist) * this.size);
                 context.stroke();
             }
+        } else if (this.type === 4) {
+            var width = this.size;
+            for (var _i4 = 0; _i4 < calcedPoints.length - 1; _i4++) {
+                var p1 = calcedPoints[_i4];
+                var p2 = calcedPoints[_i4 + 1];
+                context.beginPath();
+                context.moveTo(p1[0], p1[1] - width / 2);
+                context.lineTo(p1[0], p1[1] + width / 2);
+                context.lineTo(p2[0], p2[1] + width / 2);
+                context.lineTo(p2[0], p2[1] - width / 2);
+                context.closePath();
+                context.fill();
+            }
         } else if (this.type === 0 || this.type === 1) {
             context.beginPath();
             context.moveTo(calcedPoints[0][0], calcedPoints[0][1]);
-            for (var _i4 = 1; _i4 < calcedPoints.length; _i4++) {
-                context.lineTo(calcedPoints[_i4][0], calcedPoints[_i4][1]);
+            for (var _i5 = 1; _i5 < calcedPoints.length; _i5++) {
+                context.lineTo(calcedPoints[_i5][0], calcedPoints[_i5][1]);
             }
             context.stroke();
         } else if (this.type === 3) {
-            console.log("aperape");
             context.beginPath();
             lineDiff = this.size;
             context.moveTo(calcedPoints[0][0] - lineDiff, calcedPoints[0][1] - lineDiff);
-            for (var _i5 = 1; _i5 < calcedPoints.length; _i5 + 2) {
-                context.lineTo(calcedPoints[_i5][0] + lineDiff, calcedPoints[_i5][1] + lineDiff);
-                context.lineTo(calcedPoints[_i5][0] - lineDiff, calcedPoints[_i5][1] - lineDiff);
+            for (var _i6 = 1; _i6 < calcedPoints.length; _i6 + 2) {
+                context.lineTo(calcedPoints[_i6][0] + lineDiff, calcedPoints[_i6][1] + lineDiff);
+                context.lineTo(calcedPoints[_i6][0] - lineDiff, calcedPoints[_i6][1] - lineDiff);
             }
             context.stroke();
         }
@@ -1556,6 +1571,15 @@ function renderPlayer(isLocal, x, y, type, brushSize, color) {
         playerCtx.strokeStyle = color;
         playerCtx.lineWidth = 6;
         playerCtx.stroke();
+    } else if (type === 4) {
+        playerCtx.beginPath();
+        playerCtx.moveTo(x, y - brushSize / 2);
+        playerCtx.lineTo(x + brushSize / 2, y - brushSize / 2);
+        playerCtx.lineTo(x, y + brushSize / 2);
+        playerCtx.lineTo(x - brushSize / 2, y + brushSize / 2);
+        playerCtx.closePath();
+        playerCtx.fillStyle = color;
+        playerCtx.fill();
     }
 }
 "use strict";

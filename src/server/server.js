@@ -13,7 +13,7 @@ connect().use(serveStatic(__dirname + "/../")).listen(process.argv[2], function 
 
 var ws = require("ws");
 var server = new ws.Server({
-    port: 1337
+    port: 8000
 });
 
 var sockets = {};
